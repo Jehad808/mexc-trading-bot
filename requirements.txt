@@ -1,0 +1,4 @@
+telethon
+ccxt
+configparser
+asyncio
