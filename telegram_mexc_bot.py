@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-بوت تيليجرام للتداول الآلي على منصة MEXC
-البوت يقوم بقراءة إشارات التداول من قناة تيليجرام ويفتح صفقات تلقائية على منصة
+بوت تيليجرام للتداول الآلي على منصة MEXC - نسخة للتشخيص
+البوت يقوم بقراءة إشارات التداول من تيليجرام ويفتح صفقات تلقائية على منصة
+تم تعديل هذه النسخة للاستماع لجميع الرسائل وتسهيل التشخيص
 """
 
 import re
@@ -16,13 +17,19 @@ import configparser
 import os
 import sys
 
-# إعداد التسجيل
+# إعداد التسجيل بشكل أكثر تفصيلاً
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
-    filename='trading_bot.log'
+    filename='trading_bot_debug.log'
 )
+# إضافة تسجيل للطرفية أيضاً
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
 logger = logging.getLogger(__name__)
+logger.addHandler(console_handler)
 
 # قراءة الإعدادات من ملف التكوين
 def load_config():
@@ -35,8 +42,8 @@ def load_config():
                 'api_id': '20535892',
                 'api_hash': '25252574a23609d7bdeefe9378d97af2',
                 'phone': '+966559336168',
-                'channel_username': '@jehadmexc',
-                'channel_id': '-1002590077730',
+                'channel_username': '@ALHAJRI_VIP_GROUP',
+                'channel_id': '-1001757356492',
                 'bot_token': '7576879160:AAErIVvvAN5cSfLI7FOP-V1lZJ59mE4uD_4'
             }
             
@@ -116,7 +123,7 @@ def extract_trade_info(message_text):
                 logger.error("لم يتم العثور على الاتجاه في الرسالة")
                 return None
         direction_text = direction_match.group(1).upper()
-        direction = "LONG" if direction_text in ["LONG", "شراء", "شراء"] else "SHORT"
+        direction = "LONG" if direction_text in ["LONG", "شراء", "LONG"] else "SHORT"
         
         # استخراج سعر الدخول - جعل النمط أكثر مرونة
         entry_pattern = r'Entry:?\s*(\d+\.?\d*)'
@@ -185,6 +192,10 @@ async def calculate_position_size(symbol, entry_price, stop_loss, direction):
         balance = exchange.fetch_balance()
         usdt_balance = balance['USDT']['free']
         logger.info(f"الرصيد المتاح: {usdt_balance} USDT")
+        
+        # حساب مبلغ الاستثمار
+        investment_amount = usdt_balance * (capital_percentage / 100)
+        logger.info(f"مبلغ الاستثمار: {investment_amount} USDT ({capital_percentage}% الرصيد)")
         
         # حساب حجم الصفقة
         risk_per_trade = abs(entry_price - stop_loss) / entry_price
@@ -307,40 +318,75 @@ async def execute_trade(trade_info):
         logger.error(f"خطأ في تنفيذ الصفقة: {e}")
         return False
 
-# معالجة الرسائل الواردة من القناة
-@client.on(events.NewMessage(chats=[channel_id, channel_username]))
+# معالجة الرسائل الواردة من أي مصدر (للتشخيص)
+@client.on(events.NewMessage)
 async def handle_new_message(event):
     try:
+        # تسجيل معلومات المرسل والرسالة
+        sender = await event.get_sender()
+        sender_id = sender.id if hasattr(sender, 'id') else "غير معروف"
+        sender_name = sender.username if hasattr(sender, 'username') else "غير معروف"
+        
         message_text = event.message.text
-        logger.info(f"تم استلام رسالة: {message_text}")
+        logger.info(f"تم استلام رسالة من {sender_name} (ID: {sender_id}): {message_text}")
+        
+        # التحقق مما إذا كانت الرسالة من القناة المستهدفة
+        is_target_channel = False
+        if hasattr(sender, 'id') and sender.id == channel_id:
+            is_target_channel = True
+            logger.info("الرسالة من القناة المستهدفة")
+        elif hasattr(sender, 'username') and sender.username == channel_username.replace('@', ''):
+            is_target_channel = True
+            logger.info("الرسالة من القناة المستهدفة")
         
         # التحقق من أن الرسالة تحتوي على إشارة تداول
+        contains_signal = False
         if "Trade Signal" in message_text or "إشارة تداول" in message_text or "Signal" in message_text:
-            logger.info(f"تم استلام إشارة تداول جديدة: {message_text}")
+            contains_signal = True
+            logger.info("الرسالة تحتوي على إشارة تداول")
+        
+        # تسجيل معلومات إضافية للتشخيص
+        logger.info(f"معلومات الرسالة: من القناة المستهدفة: {is_target_channel}, تحتوي على إشارة: {contains_signal}")
+        
+        # محاولة استخراج معلومات الصفقة بغض النظر عن المصدر (للتشخيص)
+        trade_info = extract_trade_info(message_text)
+        if trade_info:
+            logger.info(f"تم استخراج معلومات الصفقة بنجاح: {trade_info}")
             
-            # استخراج معلومات الصفقة
-            trade_info = extract_trade_info(message_text)
-            if not trade_info:
-                logger.error("فشل في استخراج معلومات الصفقة")
-                return
-                
-            logger.info(f"معلومات الصفقة: {trade_info}")
+            # تنفيذ الصفقة فقط إذا كانت من القناة المستهدفة (يمكن تعديل هذا للتشخيص)
+            if is_target_channel or True:  # دائماً True للتشخيص
+                logger.info("محاولة تنفيذ الصفقة...")
+                success = await execute_trade(trade_info)
+                if success:
+                    logger.info("تم تنفيذ الصفقة بنجاح")
+                else:
+                    logger.error("فشل في تنفيذ الصفقة")
+        else:
+            logger.info("لم يتم العثور على معلومات صفقة في الرسالة")
             
-            # تنفيذ الصفقة
-            success = await execute_trade(trade_info)
-            if success:
-                logger.info("تم تنفيذ الصفقة بنجاح")
-            else:
-                logger.error("فشل في تنفيذ الصفقة")
     except Exception as e:
         logger.error(f"خطأ في معالجة الرسالة: {e}")
 
 # الدالة الرئيسية
 async def main():
     try:
-        # إذا لم يتوفر توكن البوت، نستخدم رقم الهاتف
-        await client.start(phone)
-        logger.info("تم تسجيل الدخول باستخدام رقم الهاتف")
+        # الاتصال بتيليجرام
+        await client.connect()
+        
+        # التحقق مما إذا كان المستخدم مصرح له بالفعل
+        if not await client.is_user_authorized():
+            # إرسال طلب الرمز
+            await client.send_code_request(phone)
+            logger.info("تم إرسال رمز التحقق إلى الهاتف")
+            
+            # استخدام رمز ثابت - قم بتغيير "12345" بالرمز الذي تتلقاه على هاتفك
+            verification_code = "12345"  # <-- غيّر هذا الرمز بالرمز الذي تتلقاه على هاتفك
+            
+            # تسجيل الدخول باستخدام الرمز
+            await client.sign_in(phone, verification_code)
+            logger.info("تم تسجيل الدخول باستخدام رمز التحقق")
+        else:
+            logger.info("المستخدم مصرح له بالفعل")
         
         # الحصول على معلومات القناة
         try:
@@ -353,19 +399,15 @@ async def main():
                 logger.info(f"تم الاتصال بالقناة: {entity.title}")
             except Exception as e:
                 logger.error(f"خطأ في الحصول على معلومات القناة باستخدام اسم المستخدم: {e}")
-                return
+                logger.warning("سيستمر البوت في العمل ولكن قد لا يتمكن من الوصول إلى القناة المستهدفة")
         
-        logger.info("...بدء مراقبة الرسائل الجديدة")
+        logger.info("...بدء مراقبة الرسائل الجديدة من جميع المصادر")
         
         # اختبار الاتصال بمنصة MEXC
         try:
             balance = exchange.fetch_balance()
             usdt_balance = balance['USDT']['free']
             logger.info(f"تم الاتصال بمنصة MEXC. الرصيد المتاح: {usdt_balance} USDT")
-            
-            # حساب مبلغ الاستثمار
-            investment_amount = usdt_balance * (capital_percentage / 100)
-            logger.info(f"مبلغ الاستثمار: {investment_amount} USDT ({capital_percentage}% الرصيد)")
         except Exception as e:
             logger.error(f"خطأ في الاتصال بمنصة MEXC: {e}")
         
