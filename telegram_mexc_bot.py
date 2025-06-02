@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-بوت تيليجرام للتداول الآلي على منصة MEXC - نسخة للتشخيص
+بوت تيليجرام للتداول الآلي على منصة MEXC - نسخة تستخدم بوت تيليجرام
 البوت يقوم بقراءة إشارات التداول من تيليجرام ويفتح صفقات تلقائية على منصة
-تم تعديل هذه النسخة للاستماع لجميع الرسائل وتسهيل التشخيص
 """
 
 import re
@@ -42,8 +41,8 @@ def load_config():
                 'api_id': '20535892',
                 'api_hash': '25252574a23609d7bdeefe9378d97af2',
                 'phone': '+966559336168',
-                'channel_username': '@ALHAJRI_VIP_GROUP',
-                'channel_id': '-1001757356492',
+                'channel_username': '@jehadmexc',
+                'channel_id': '-1002590077730',
                 'bot_token': '7576879160:AAErIVvvAN5cSfLI7FOP-V1lZJ59mE4uD_4'
             }
             
@@ -70,7 +69,6 @@ config = load_config()
 # إعدادات تيليجرام
 api_id = int(config['TELEGRAM']['api_id'])
 api_hash = config['TELEGRAM']['api_hash']
-phone = config['TELEGRAM']['phone']
 channel_username = config['TELEGRAM']['channel_username']
 channel_id = int(config['TELEGRAM']['channel_id'])
 bot_token = config['TELEGRAM']['bot_token']
@@ -91,8 +89,8 @@ exchange = ccxt.mexc({
     }
 })
 
-# تهيئة عميل تيليجرام
-client = TelegramClient('trading_session', api_id, api_hash)
+# تهيئة عميل تيليجرام باستخدام توكن البوت
+client = TelegramClient('bot_session', api_id, api_hash).start(bot_token=bot_token)
 
 # استخراج معلومات الصفقة من رسائل تيليجرام
 def extract_trade_info(message_text):
@@ -332,7 +330,7 @@ async def handle_new_message(event):
         
         # التحقق مما إذا كانت الرسالة من القناة المستهدفة
         is_target_channel = False
-        if hasattr(sender, 'id') and sender.id == channel_id:
+        if hasattr(sender, 'id') and str(sender.id) == str(channel_id):
             is_target_channel = True
             logger.info("الرسالة من القناة المستهدفة")
         elif hasattr(sender, 'username') and sender.username == channel_username.replace('@', ''):
@@ -370,23 +368,7 @@ async def handle_new_message(event):
 # الدالة الرئيسية
 async def main():
     try:
-        # الاتصال بتيليجرام
-        await client.connect()
-        
-        # التحقق مما إذا كان المستخدم مصرح له بالفعل
-        if not await client.is_user_authorized():
-            # إرسال طلب الرمز
-            await client.send_code_request(phone)
-            logger.info("تم إرسال رمز التحقق إلى الهاتف")
-            
-            # استخدام رمز ثابت - قم بتغيير "12345" بالرمز الذي تتلقاه على هاتفك
-            verification_code = "72824"  # <-- غيّر هذا الرمز بالرمز الذي تتلقاه على هاتفك
-            
-            # تسجيل الدخول باستخدام الرمز
-            await client.sign_in(phone, verification_code)
-            logger.info("تم تسجيل الدخول باستخدام رمز التحقق")
-        else:
-            logger.info("المستخدم مصرح له بالفعل")
+        logger.info("بدء تشغيل البوت باستخدام توكن البوت...")
         
         # الحصول على معلومات القناة
         try:
@@ -410,6 +392,10 @@ async def main():
             logger.info(f"تم الاتصال بمنصة MEXC. الرصيد المتاح: {usdt_balance} USDT")
         except Exception as e:
             logger.error(f"خطأ في الاتصال بمنصة MEXC: {e}")
+        
+        # إرسال رسالة تأكيد بدء التشغيل
+        me = await client.get_me()
+        logger.info(f"البوت يعمل الآن باسم: {me.username}")
         
         # الاستمرار في تشغيل البوت
         await client.run_until_disconnected()
