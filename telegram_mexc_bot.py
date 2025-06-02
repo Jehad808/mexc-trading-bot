@@ -32,11 +32,11 @@ def load_config():
     # إنشاء ملف التكوين إذا لم يكن موجودًا
     if not os.path.exists('config.ini'):
         config['TELEGRAM'] = {
-            'api_id': '12345',
-            'api_hash': 'your_api_hash',
-            'phone': '+1234567890',
-            'channel_username': '@jehadmexc',
-            'channel_id': '-1002590077730',
+            'api_id': '20535892',
+            'api_hash': '25252574a23609d7bdeefe9378d97af2',
+            'phone': '+966559336168',
+            'channel_username': '@ALHAJRI VIP GROUP',
+            'channel_id': '-1001757356492',
             'bot_token': '7576879160:AAErIVvvAN5cSfLI7FOP-VllZJ59mE4uD_4'
         }
         
