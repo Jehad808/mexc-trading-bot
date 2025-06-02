@@ -3,6 +3,7 @@
 """
 بوت تيليجرام للتداول الآلي على منصة MEXC - نسخة تستخدم بوت تيليجرام
 البوت يقوم بقراءة إشارات التداول من تيليجرام ويفتح صفقات تلقائية على منصة
+تم تصحيح مشكلة event loop وإضافة تعليمات لمفاتيح API
 """
 
 import re
@@ -40,7 +41,6 @@ def load_config():
             config['TELEGRAM'] = {
                 'api_id': '20535892',
                 'api_hash': '25252574a23609d7bdeefe9378d97af2',
-                'phone': '+966559336168',
                 'channel_username': '@jehadmexc',
                 'channel_id': '-1002590077730',
                 'bot_token': '7576879160:AAErIVvvAN5cSfLI7FOP-V1lZJ59mE4uD_4'
@@ -88,9 +88,6 @@ exchange = ccxt.mexc({
         'defaultType': 'future',  # استخدام العقود الآجلة
     }
 })
-
-# تهيئة عميل تيليجرام باستخدام توكن البوت
-client = TelegramClient('bot_session', api_id, api_hash).start(bot_token=bot_token)
 
 # استخراج معلومات الصفقة من رسائل تيليجرام
 def extract_trade_info(message_text):
@@ -317,7 +314,6 @@ async def execute_trade(trade_info):
         return False
 
 # معالجة الرسائل الواردة من أي مصدر (للتشخيص)
-@client.on(events.NewMessage)
 async def handle_new_message(event):
     try:
         # تسجيل معلومات المرسل والرسالة
@@ -370,14 +366,25 @@ async def main():
     try:
         logger.info("بدء تشغيل البوت باستخدام توكن البوت...")
         
+        # تهيئة عميل تيليجرام باستخدام توكن البوت
+        bot = TelegramClient('bot_session', api_id, api_hash)
+        
+        # تسجيل معالج الرسائل
+        @bot.on(events.NewMessage)
+        async def message_handler(event):
+            await handle_new_message(event)
+        
+        # بدء تشغيل البوت
+        await bot.start(bot_token=bot_token)
+        
         # الحصول على معلومات القناة
         try:
-            entity = await client.get_entity(PeerChannel(channel_id))
+            entity = await bot.get_entity(PeerChannel(channel_id))
             logger.info(f"تم الاتصال بالقناة: {entity.title}")
         except Exception as e:
             logger.error(f"خطأ في الحصول على معلومات القناة باستخدام ID: {e}")
             try:
-                entity = await client.get_entity(channel_username)
+                entity = await bot.get_entity(channel_username)
                 logger.info(f"تم الاتصال بالقناة: {entity.title}")
             except Exception as e:
                 logger.error(f"خطأ في الحصول على معلومات القناة باستخدام اسم المستخدم: {e}")
@@ -392,21 +399,20 @@ async def main():
             logger.info(f"تم الاتصال بمنصة MEXC. الرصيد المتاح: {usdt_balance} USDT")
         except Exception as e:
             logger.error(f"خطأ في الاتصال بمنصة MEXC: {e}")
+            logger.warning("تأكد من صحة مفاتيح API الخاصة بمنصة MEXC في ملف config.ini")
         
         # إرسال رسالة تأكيد بدء التشغيل
-        me = await client.get_me()
+        me = await bot.get_me()
         logger.info(f"البوت يعمل الآن باسم: {me.username}")
         
         # الاستمرار في تشغيل البوت
-        await client.run_until_disconnected()
+        await bot.run_until_disconnected()
     except Exception as e:
         logger.error(f"خطأ في الدالة الرئيسية: {e}")
 
 # تشغيل البوت
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("تم إيقاف البوت بواسطة المستخدم")
-    except Exception as e:
-        logger.error(f"خطأ غير متوقع: {e}")
+    # تشغيل البوت بالطريقة الصحيحة لتجنب مشاكل event loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(main())
