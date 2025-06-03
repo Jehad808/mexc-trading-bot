@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-بوت تيليجرام للتداول الآلي على منصة MEXC - نسخة تستخدم بوت تيليجرام
-البوت يقوم بقراءة إشارات التداول من تيليجرام ويفتح صفقات تلقائية على منصة
-تم تصحيح مشكلة event loop وإضافة تعليمات لمفاتيح API
+بوت تيليجرام للتداول الآلي على منصة MEXC - نسخة جديدة
+البوت يقوم بقراءة إشارات التداول من جميع المصادر ويفتح صفقات تلقائية على منصة MEXC
+تم تصميم هذه النسخة لتعمل مع api_id و api_hash فقط (بدون توكن بوت)
 """
 
 import re
@@ -41,13 +41,11 @@ def load_config():
             config['TELEGRAM'] = {
                 'api_id': '20535892',
                 'api_hash': '25252574a23609d7bdeefe9378d97af2',
-                'channel_username': '@jehadmexc',
-                'channel_id': '-1002590077730',
-                'bot_token': '7576879160:AAErIVvvAN5cSfLI7FOP-V1lZJ59mE4uD_4'
+                'phone': '+966559336168'
             }
             
             config['MEXC'] = {
-                'api_key': 'mx0vglSFP0y6ypr7D1',
+                'api_key': 'mx0vglSFP0y6ypr7Dl',
                 'api_secret': '55e276ea2ffc4bb2b2752b4a2906a849',
                 'leverage': '100',
                 'capital_percentage': '2'
@@ -69,9 +67,7 @@ config = load_config()
 # إعدادات تيليجرام
 api_id = int(config['TELEGRAM']['api_id'])
 api_hash = config['TELEGRAM']['api_hash']
-channel_username = config['TELEGRAM']['channel_username']
-channel_id = int(config['TELEGRAM']['channel_id'])
-bot_token = config['TELEGRAM']['bot_token']
+phone = config['TELEGRAM']['phone']
 
 # إعدادات MEXC
 mexc_api_key = config['MEXC']['api_key']
@@ -313,7 +309,7 @@ async def execute_trade(trade_info):
         logger.error(f"خطأ في تنفيذ الصفقة: {e}")
         return False
 
-# معالجة الرسائل الواردة من أي مصدر (للتشخيص)
+# معالجة الرسائل الواردة من أي مصدر
 async def handle_new_message(event):
     try:
         # تسجيل معلومات المرسل والرسالة
@@ -324,37 +320,24 @@ async def handle_new_message(event):
         message_text = event.message.text
         logger.info(f"تم استلام رسالة من {sender_name} (ID: {sender_id}): {message_text}")
         
-        # التحقق مما إذا كانت الرسالة من القناة المستهدفة
-        is_target_channel = False
-        if hasattr(sender, 'id') and str(sender.id) == str(channel_id):
-            is_target_channel = True
-            logger.info("الرسالة من القناة المستهدفة")
-        elif hasattr(sender, 'username') and sender.username == channel_username.replace('@', ''):
-            is_target_channel = True
-            logger.info("الرسالة من القناة المستهدفة")
-        
         # التحقق من أن الرسالة تحتوي على إشارة تداول
         contains_signal = False
         if "Trade Signal" in message_text or "إشارة تداول" in message_text or "Signal" in message_text:
             contains_signal = True
             logger.info("الرسالة تحتوي على إشارة تداول")
         
-        # تسجيل معلومات إضافية للتشخيص
-        logger.info(f"معلومات الرسالة: من القناة المستهدفة: {is_target_channel}, تحتوي على إشارة: {contains_signal}")
-        
-        # محاولة استخراج معلومات الصفقة بغض النظر عن المصدر (للتشخيص)
+        # محاولة استخراج معلومات الصفقة من أي رسالة
         trade_info = extract_trade_info(message_text)
         if trade_info:
             logger.info(f"تم استخراج معلومات الصفقة بنجاح: {trade_info}")
             
-            # تنفيذ الصفقة فقط إذا كانت من القناة المستهدفة (يمكن تعديل هذا للتشخيص)
-            if is_target_channel or True:  # دائماً True للتشخيص
-                logger.info("محاولة تنفيذ الصفقة...")
-                success = await execute_trade(trade_info)
-                if success:
-                    logger.info("تم تنفيذ الصفقة بنجاح")
-                else:
-                    logger.error("فشل في تنفيذ الصفقة")
+            # تنفيذ الصفقة
+            logger.info("محاولة تنفيذ الصفقة...")
+            success = await execute_trade(trade_info)
+            if success:
+                logger.info("تم تنفيذ الصفقة بنجاح")
+            else:
+                logger.error("فشل في تنفيذ الصفقة")
         else:
             logger.info("لم يتم العثور على معلومات صفقة في الرسالة")
             
@@ -364,31 +347,26 @@ async def handle_new_message(event):
 # الدالة الرئيسية
 async def main():
     try:
-        logger.info("بدء تشغيل البوت باستخدام توكن البوت...")
+        logger.info("بدء تشغيل البوت...")
         
-        # تهيئة عميل تيليجرام باستخدام توكن البوت
-        bot = TelegramClient('bot_session', api_id, api_hash)
+        # تهيئة عميل تيليجرام
+        client = TelegramClient('user_session', api_id, api_hash)
         
         # تسجيل معالج الرسائل
-        @bot.on(events.NewMessage)
+        @client.on(events.NewMessage)
         async def message_handler(event):
             await handle_new_message(event)
         
-        # بدء تشغيل البوت
-        await bot.start(bot_token=bot_token)
+        # بدء تشغيل العميل
+        await client.start()
         
-        # الحصول على معلومات القناة
-        try:
-            entity = await bot.get_entity(PeerChannel(channel_id))
-            logger.info(f"تم الاتصال بالقناة: {entity.title}")
-        except Exception as e:
-            logger.error(f"خطأ في الحصول على معلومات القناة باستخدام ID: {e}")
-            try:
-                entity = await bot.get_entity(channel_username)
-                logger.info(f"تم الاتصال بالقناة: {entity.title}")
-            except Exception as e:
-                logger.error(f"خطأ في الحصول على معلومات القناة باستخدام اسم المستخدم: {e}")
-                logger.warning("سيستمر البوت في العمل ولكن قد لا يتمكن من الوصول إلى القناة المستهدفة")
+        # التحقق مما إذا كان المستخدم مصرح له بالفعل
+        if not await client.is_user_authorized():
+            logger.info("المستخدم غير مصرح له. يرجى إدخال رمز التحقق عند طلبه.")
+            await client.send_code_request(phone)
+            # ملاحظة: يجب إدخال رمز التحقق يدوياً عند تشغيل البوت لأول مرة
+        else:
+            logger.info("المستخدم مصرح له بالفعل")
         
         logger.info("...بدء مراقبة الرسائل الجديدة من جميع المصادر")
         
@@ -401,12 +379,8 @@ async def main():
             logger.error(f"خطأ في الاتصال بمنصة MEXC: {e}")
             logger.warning("تأكد من صحة مفاتيح API الخاصة بمنصة MEXC في ملف config.ini")
         
-        # إرسال رسالة تأكيد بدء التشغيل
-        me = await bot.get_me()
-        logger.info(f"البوت يعمل الآن باسم: {me.username}")
-        
         # الاستمرار في تشغيل البوت
-        await bot.run_until_disconnected()
+        await client.run_until_disconnected()
     except Exception as e:
         logger.error(f"خطأ في الدالة الرئيسية: {e}")
 
