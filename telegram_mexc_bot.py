@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-بوت تيليجرام للتداول الآلي على منصة MEXC - نسخة جديدة
+بوت تيليجرام للتداول الآلي على منصة MEXC - نسخة جديدة تعمل مع String Session
 البوت يقوم بقراءة إشارات التداول من جميع المصادر ويفتح صفقات تلقائية على منصة MEXC
-تم تصميم هذه النسخة لتعمل مع api_id و api_hash فقط (بدون توكن بوت)
+تم تصميم هذه النسخة لتعمل مع متغير بيئة STRING_SESSION على Render
 """
 
 import re
@@ -11,7 +11,7 @@ import time
 import logging
 import asyncio
 from telethon import TelegramClient, events
-from telethon.tl.types import PeerChannel, Channel
+from telethon.sessions import StringSession
 import ccxt
 import configparser
 import os
@@ -21,7 +21,7 @@ import sys
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
-    filename='trading_bot_debug.log'
+    filename='trading_bot.log'
 )
 # إضافة تسجيل للطرفية أيضاً
 console_handler = logging.StreamHandler()
@@ -31,7 +31,7 @@ console_handler.setFormatter(formatter)
 logger = logging.getLogger(__name__)
 logger.addHandler(console_handler)
 
-# قراءة الإعدادات من ملف التكوين
+# قراءة الإعدادات من ملف التكوين أو متغيرات البيئة
 def load_config():
     try:
         config = configparser.ConfigParser()
@@ -39,16 +39,16 @@ def load_config():
         # إنشاء ملف التكوين إذا لم يكن موجوداً
         if not os.path.exists('config.ini'):
             config['TELEGRAM'] = {
-                'api_id': '20535892',
-                'api_hash': '25252574a23609d7bdeefe9378d97af2',
-                'phone': '+966559336168'
+                'api_id': os.environ.get('TELEGRAM_API_ID', '20535892'),
+                'api_hash': os.environ.get('TELEGRAM_API_HASH', '25252574a23609d7bdeefe9378d97af2'),
+                'phone': os.environ.get('TELEGRAM_PHONE', '+966559336168')
             }
             
             config['MEXC'] = {
-                'api_key': 'mx0vglSFP0y6ypr7Dl',
-                'api_secret': '55e276ea2ffc4bb2b2752b4a2906a849',
-                'leverage': '100',
-                'capital_percentage': '2'
+                'api_key': os.environ.get('MEXC_API_KEY', 'mx0vglSFP0y6ypr7Dl'),
+                'api_secret': os.environ.get('MEXC_API_SECRET', '55e276ea2ffc4bb2b2752b4a2906a849'),
+                'leverage': os.environ.get('MEXC_LEVERAGE', '100'),
+                'capital_percentage': os.environ.get('MEXC_CAPITAL_PERCENTAGE', '2')
             }
             
             with open('config.ini', 'w') as configfile:
@@ -65,15 +65,15 @@ def load_config():
 config = load_config()
 
 # إعدادات تيليجرام
-api_id = int(config['TELEGRAM']['api_id'])
-api_hash = config['TELEGRAM']['api_hash']
-phone = config['TELEGRAM']['phone']
+api_id = int(os.environ.get('TELEGRAM_API_ID', config['TELEGRAM']['api_id']))
+api_hash = os.environ.get('TELEGRAM_API_HASH', config['TELEGRAM']['api_hash'])
+string_session = os.environ.get('TELEGRAM_STRING_SESSION', '')
 
 # إعدادات MEXC
-mexc_api_key = config['MEXC']['api_key']
-mexc_api_secret = config['MEXC']['api_secret']
-leverage = int(config['MEXC']['leverage'])
-capital_percentage = float(config['MEXC']['capital_percentage'])
+mexc_api_key = os.environ.get('MEXC_API_KEY', config['MEXC']['api_key'])
+mexc_api_secret = os.environ.get('MEXC_API_SECRET', config['MEXC']['api_secret'])
+leverage = int(os.environ.get('MEXC_LEVERAGE', config['MEXC']['leverage']))
+capital_percentage = float(os.environ.get('MEXC_CAPITAL_PERCENTAGE', config['MEXC']['capital_percentage']))
 
 # تهيئة عميل MEXC
 exchange = ccxt.mexc({
@@ -349,8 +349,14 @@ async def main():
     try:
         logger.info("بدء تشغيل البوت...")
         
-        # تهيئة عميل تيليجرام
-        client = TelegramClient('user_session', api_id, api_hash)
+        # التحقق من وجود جلسة سلسلة
+        if not string_session:
+            logger.error("متغير البيئة TELEGRAM_STRING_SESSION غير موجود!")
+            logger.error("يجب تعيين متغير البيئة TELEGRAM_STRING_SESSION في إعدادات Render.")
+            return
+        
+        # تهيئة عميل تيليجرام باستخدام جلسة السلسلة
+        client = TelegramClient(StringSession(string_session), api_id, api_hash)
         
         # تسجيل معالج الرسائل
         @client.on(events.NewMessage)
@@ -362,11 +368,8 @@ async def main():
         
         # التحقق مما إذا كان المستخدم مصرح له بالفعل
         if not await client.is_user_authorized():
-            logger.info("المستخدم غير مصرح له. يرجى إدخال رمز التحقق عند طلبه.")
-            await client.send_code_request(phone)
-            # ملاحظة: يجب إدخال رمز التحقق يدوياً عند تشغيل البوت لأول مرة
-        else:
-            logger.info("المستخدم مصرح له بالفعل")
+            logger.error("المستخدم غير مصرح له! تأكد من صحة جلسة السلسلة.")
+            return
         
         logger.info("...بدء مراقبة الرسائل الجديدة من جميع المصادر")
         
@@ -377,7 +380,7 @@ async def main():
             logger.info(f"تم الاتصال بمنصة MEXC. الرصيد المتاح: {usdt_balance} USDT")
         except Exception as e:
             logger.error(f"خطأ في الاتصال بمنصة MEXC: {e}")
-            logger.warning("تأكد من صحة مفاتيح API الخاصة بمنصة MEXC في ملف config.ini")
+            logger.warning("تأكد من صحة مفاتيح API الخاصة بمنصة MEXC في متغيرات البيئة أو ملف config.ini")
         
         # الاستمرار في تشغيل البوت
         await client.run_until_disconnected()
