@@ -1,4 +1,4 @@
-telethon
-ccxt
-configparser
-asyncio
+telethon==1.28.5
+ccxt==3.1.54
+configparser==5.3.0
+asyncio==3.4.3
