@@ -1,50 +1,39 @@
-import requests
-import hmac
-import hashlib
-import time
-import logging
-
-logger = logging.getLogger(__name__)
+import hmac, hashlib, time, requests, logging
 
 class MEXC:
     def __init__(self, api_key, api_secret):
-        self.api_key = api_key
-        self.api_secret = api_secret
-        self.base_url = "https://api.mexc.com"
-        
-    def _generate_signature(self, params ):
-        """إنشاء توقيع HMAC SHA256 للمصادقة"""
-        query_string = '&'.join([f"{key}={params[key]}" for key in sorted(params.keys())])
-        signature = hmac.new(
-            self.api_secret.encode('utf-8'),
-            query_string.encode('utf-8'),
-            hashlib.sha256
-        ).hexdigest()
-        return signature
-        
-    def open_position(self, symbol, direction, leverage, capital_percentage, entry_price=None, take_profit=None, stop_loss=None):
-        """فتح صفقة في منصة MEXC"""
-        try:
-            logger.info(f"فتح صفقة: {symbol} {direction} بالرافعة {leverage}x ونسبة رأس المال {capital_percentage}%")
-            
-            # هنا يمكنك إضافة الكود الفعلي للتفاعل مع API الخاص بـ MEXC
-            # هذا مثال بسيط فقط
-            
-            # محاكاة نجاح العملية
-            result = {
-                "symbol": symbol,
-                "direction": direction,
-                "leverage": leverage,
-                "capital_percentage": capital_percentage,
-                "entry_price": entry_price,
-                "take_profit": take_profit,
-                "stop_loss": stop_loss,
-                "status": "success",
-                "message": "تم فتح الصفقة بنجاح"
-            }
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"خطأ في فتح الصفقة: {str(e)}")
-            return {"status": "error", "message": str(e)}
+        self.key = api_key
+        self.secret = api_secret
+        self.base = "https://contract.mexc.com"
+
+    def _sign(self, params):
+        query = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+        return hmac.new(self.secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+
+    def _request(self, path, method="GET", params=None):
+        if params is None:
+            params = {}
+        params.update({"api_key": self.key, "req_time": int(time.time() * 1000)})
+        params["sign"] = self._sign(params)
+        if method == "GET":
+            return requests.get(self.base + path, params=params).json()
+        else:
+            return requests.post(self.base + path, data=params).json()
+
+    def get_balance(self):
+        res = self._request("/api/v1/private/account/asset/USDT")
+        return float(res["data"]["availableBalance"]) if res.get("success") else 0.0
+
+    def create_order(self, symbol, price, volume, side, leverage):
+        params = {
+            "symbol": symbol.lower(),
+            "price": price,
+            "vol": volume,
+            "side": 1 if side.lower() == "long" else 2,
+            "leverage": leverage,
+            "category": 1,
+            "trade_type": 1,
+            "position_mode": 1,
+            "price_type": 1
+        }
+        return self._request("/api/v1/private/order/submit", "POST", params)
