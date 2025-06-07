@@ -21,9 +21,9 @@ capital = float(os.getenv("MEXC_CAPITAL_PERCENTAGE", 2.0))
 client = TelegramClient(StringSession(string), api_id, api_hash)
 mexc = MEXC(mexc_key, mexc_secret)
 
-# النمط للتعرف على الصفقات
+# النمط للتعرف على الصفقات، مع قبول الرموز التي فيها لاحقة مثل BTCUSDT.P
 pattern = re.compile(
-    r'Symbol:\s*(\w+)\s*'
+    r'Symbol:\s*([\w\.]+)\s*'
     r'Direction:\s*(LONG|SHORT)\s*'
     r'Entry Price:\s*([\d.]+)\s*'
     r'Take Profit 1:\s*([\d.]+)\s*'
@@ -39,7 +39,9 @@ async def handler(event):
         if not match:
             return
 
-        symbol, direction, entry, tp1, tp2, sl = match.groups()
+        raw_symbol, direction, entry, tp1, tp2, sl = match.groups()
+        symbol = raw_symbol.upper().replace(".P", "").replace(".S", "")  # إزالة اللواحق مثل .P أو .S
+
         entry, tp1, sl = float(entry), float(tp1), float(sl)
 
         balance = mexc.get_balance()
