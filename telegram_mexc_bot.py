@@ -1,9 +1,11 @@
-import os, re, logging
+import os
+import re
+import logging
 from telethon.sync import TelegramClient, events
 from telethon.sessions import StringSession
 from mexc_api import MEXC
 
-# إعدادات اللوغز
+# إعدادات اللوق
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -21,9 +23,9 @@ capital = float(os.getenv("MEXC_CAPITAL_PERCENTAGE", 2.0))
 client = TelegramClient(StringSession(string), api_id, api_hash)
 mexc = MEXC(mexc_key, mexc_secret)
 
-# النمط للتعرف على الصفقات، مع قبول الرموز التي فيها لاحقة مثل BTCUSDT.P
+# نمط قراءة الرسائل
 pattern = re.compile(
-    r'Symbol:\s*([\w\.]+)\s*'
+    r'Symbol:\s*(\w+\.?\w*)\s*'
     r'Direction:\s*(LONG|SHORT)\s*'
     r'Entry Price:\s*([\d.]+)\s*'
     r'Take Profit 1:\s*([\d.]+)\s*'
@@ -39,9 +41,8 @@ async def handler(event):
         if not match:
             return
 
-        raw_symbol, direction, entry, tp1, tp2, sl = match.groups()
-        symbol = raw_symbol.upper().replace(".P", "").replace(".S", "")  # إزالة اللواحق مثل .P أو .S
-
+        symbol, direction, entry, tp1, tp2, sl = match.groups()
+        symbol = symbol.upper().replace(".P", "").replace(".p", "")
         entry, tp1, sl = float(entry), float(tp1), float(sl)
 
         balance = mexc.get_balance()
@@ -70,7 +71,6 @@ async def handler(event):
         logger.error(f"خطأ أثناء فتح الصفقة: {e}")
         await event.reply(f"⚠️ حدث خطأ: {e}")
 
-# تشغيل البوت
 client.start()
-logger.info("✅ تم تسجيل الدخول، البوت يعمل الآن...")
+logger.info("✅ البوت يعمل الآن ويستمع للرسائل...")
 client.run_until_disconnected()
