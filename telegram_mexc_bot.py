@@ -77,8 +77,11 @@ def main():
     """تشغيل البوت"""
     logger.info("بدء تشغيل البوت...")
     
-    # بدء تشغيل العميل بدون طلب رمز تحقق (سيستخدم الجلسة المحفوظة)
-    client.start(phone=lambda: "+966559336168", password=lambda: "1234", code_callback=lambda: "57188")
+    # بدء تشغيل العميل مع رقم الهاتف مباشرة
+    phone_number = "+966559336168"  # رقم هاتفك
+    
+    # استخدام دوال lambda لتوفير المعلومات تلقائياً
+    client.start(phone=lambda: phone_number, code_callback=lambda: "12345")
     
     logger.info("تم تسجيل الدخول بنجاح!")
     
