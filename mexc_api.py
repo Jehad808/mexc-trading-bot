@@ -1,39 +1,97 @@
-import hmac, hashlib, time, requests, logging
+import time
+import hmac
+import hashlib
+import requests
+import logging
+
+logger = logging.getLogger(__name__)
 
 class MEXC:
     def __init__(self, api_key, api_secret):
-        self.key = api_key
-        self.secret = api_secret
-        self.base = "https://contract.mexc.com"
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.base_url = "https://contract.mexc.com"
 
-    def _sign(self, params):
-        query = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
-        return hmac.new(self.secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+    def _sign(self, params: dict) -> str:
+        """توليد توقيع HMAC SHA256"""
+        query = '&'.join(f"{key}={params[key]}" for key in sorted(params))
+        return hmac.new(self.api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
 
-    def _request(self, path, method="GET", params=None):
+    def _request(self, method: str, path: str, params: dict = None, private: bool = False):
+        url = self.base_url + path
+        headers = {}
         if params is None:
             params = {}
-        params.update({"api_key": self.key, "req_time": int(time.time() * 1000)})
-        params["sign"] = self._sign(params)
+        if private:
+            params["api_key"] = self.api_key
+            params["req_time"] = int(time.time() * 1000)
+            params["sign"] = self._sign(params)
         if method == "GET":
-            return requests.get(self.base + path, params=params).json()
+            response = requests.get(url, params=params, headers=headers)
         else:
-            return requests.post(self.base + path, data=params).json()
+            response = requests.post(url, data=params, headers=headers)
+        return response.json()
 
-    def get_balance(self):
-        res = self._request("/api/v1/private/account/asset/USDT")
-        return float(res["data"]["availableBalance"]) if res.get("success") else 0.0
+    def get_balance(self) -> float:
+        """جلب الرصيد المتاح"""
+        result = self._request("GET", "/api/v1/private/account/assets", private=True)
+        if result.get("success"):
+            for asset in result["data"]:
+                if asset["currency"] == "USDT":
+                    return float(asset["availableBalance"])
+        return 0.0
 
-    def create_order(self, symbol, price, volume, side, leverage):
+    def set_leverage(self, symbol: str, leverage: int):
+        """تعيين الرافعة المالية"""
+        return self._request("POST", "/api/v1/private/position/change-leverage", {
+            "symbol": symbol,
+            "leverage": leverage
+        }, private=True)
+
+    def create_order(self, symbol, entry_price, quantity, direction, leverage=100):
+        """فتح صفقة"""
+        side = 1 if direction.upper() == "LONG" else 2
         params = {
-            "symbol": symbol.lower(),
-            "price": price,
-            "vol": volume,
-            "side": 1 if side.lower() == "long" else 2,
+            "symbol": symbol.lower(),  # مثل btcusdt
+            "price": entry_price,
+            "vol": quantity,
+            "side": side,  # 1 = Buy, 2 = Sell
             "leverage": leverage,
-            "category": 1,
-            "trade_type": 1,
-            "position_mode": 1,
-            "price_type": 1
+            "open_type": 1,  # Isolated
+            "position_id": 0,
+            "external_oid": str(int(time.time() * 1000)),
+            "stop_loss_price": 0,
+            "take_profit_price": 0,
+            "position_mode": 1,  # Single Position Mode
+            "reduce_only": False,
+            "price_type": 1  # Limit Order
         }
-        return self._request("/api/v1/private/order/submit", "POST", params)
+        return self._request("POST", "/api/v1/private/order/submit", params, private=True)
+
+    def open_position(self, symbol, direction, leverage, capital_percentage, entry_price=None, take_profit=None, stop_loss=None):
+        try:
+            balance = self.get_balance()
+            if balance == 0:
+                return {"status": "error", "message": "الرصيد غير متاح أو صفر"}
+
+            quantity = round((balance * (capital_percentage / 100)) / entry_price, 3)
+
+            set_leverage_result = self.set_leverage(symbol, leverage)
+            logger.info(f"تعيين الرافعة المالية: {set_leverage_result}")
+
+            order_result = self.create_order(
+                symbol=symbol,
+                entry_price=entry_price,
+                quantity=quantity,
+                direction=direction,
+                leverage=leverage
+            )
+            logger.info(f"نتيجة فتح الصفقة: {order_result}")
+
+            if order_result.get("success"):
+                return {"status": "success", "message": "تم فتح الصفقة بنجاح"}
+            else:
+                return {"status": "error", "message": order_result.get("message", "فشل غير معروف")}
+        except Exception as e:
+            logger.error(f"خطأ أثناء فتح الصفقة: {e}")
+            return {"status": "error", "message": str(e)}
